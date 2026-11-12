@@ -1,0 +1,4 @@
+llm:
+  base-url: https://api.siliconflow.cn/v1
+  model: 模型
+  api-key: 你的API密钥
