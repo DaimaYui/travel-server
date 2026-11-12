@@ -1,15 +1,18 @@
 package com.itjyr.travelserver.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.itjyr.travelserver.dto.ChatRequestDTO;
 import com.itjyr.travelserver.dto.TravelRequestDTO;
 import com.itjyr.travelserver.utils.LLMutils;
-import com.itjyr.travelserver.vo.Result;
-import com.itjyr.travelserver.vo.TravelRecommendVO;
+import com.itjyr.travelserver.vo.*;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import java.io.IOException;
+import java.util.function.Consumer;
 
 @Service
 public class TravelService {
@@ -149,6 +152,34 @@ public class TravelService {
     }
 
     public SseEmitter chat(ChatRequestDTO chatRequestDTO){
-        return null;
+        SseEmitter emitter = new SseEmitter(180000L);
+
+        new Thread(() -> {
+            try {
+                String systemPrompt = "你是一个友好的旅游助手，请用中文回答用户关于旅游的问题";
+
+                Consumer<String> callback = (content) -> {
+                    try {
+                        String Json = objectMapper.writeValueAsString(StreamChunkVO.of(content));
+                        emitter.send(SseEmitter.event().data(Json));
+                    } catch (Exception e) {
+                        System.out.println("Error writing to emitter: " + e.getMessage());
+                    }
+                };
+                llmutils.chatStream(systemPrompt,chatRequestDTO.getMessage(),callback);
+                emitter.send(SseEmitter.event().data(objectMapper.writeValueAsString(StreamDoneVO.of())));
+                emitter.complete();
+            } catch (Exception e) {
+                try {
+                    String errorJson = objectMapper.writeValueAsString(StreamErrorVO.of(e.getMessage()));
+                    emitter.send(SseEmitter.event().data(errorJson));
+                } catch (Exception ex) {
+                    System.out.println("Error writing to emitter: " + ex.getMessage());
+                }
+                emitter.completeWithError(e);
+            }
+
+        }).start();
+        return emitter;
     }
 }
